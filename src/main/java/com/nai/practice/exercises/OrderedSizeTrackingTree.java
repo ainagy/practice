@@ -1,6 +1,8 @@
 package com.nai.practice.exercises;
 
-import java.util.Optional;
+import com.sun.org.apache.xpath.internal.operations.Or;
+
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
@@ -8,6 +10,8 @@ import java.util.function.Consumer;
  * Created by Andras on 11/19/2016.
  */
 public class OrderedSizeTrackingTree<T extends Comparable<T>> {
+    public enum IterationOrder {INORDER, BFS, DFS}
+
     Optional<Node<T>> root = Optional.empty();
 
     public void addValue(T newValue) {
@@ -32,6 +36,10 @@ public class OrderedSizeTrackingTree<T extends Comparable<T>> {
 
     public Optional<Node<T>> getRoot() {
         return root;
+    }
+
+    public Iterator<T> iterator(IterationOrder iterationOrder) {
+        return new OrderedSizeTrackingTreeIterator(this, iterationOrder);
     }
 
     Node<T> findParent(Node<T> node, Consumer<Node<T>> visitor) {
@@ -106,6 +114,7 @@ public class OrderedSizeTrackingTree<T extends Comparable<T>> {
             this.size = 1;
         }
 
+
         boolean hasNoLeftSubtree() {
             return !leftSubTree.isPresent();
         }
@@ -144,6 +153,7 @@ public class OrderedSizeTrackingTree<T extends Comparable<T>> {
             this.rightSubTree = Optional.of(rightSubTree);
         }
 
+
         public void setParent(Node<NT> parent) {
             this.parent = Optional.of(parent);
         }
@@ -154,6 +164,88 @@ public class OrderedSizeTrackingTree<T extends Comparable<T>> {
 
         public Optional<Node<NT>> getParent() {
             return parent;
+        }
+    }
+
+    class OrderedSizeTrackingTreeIterator<S extends Comparable<S>> implements Iterator<S> {
+        private final OrderedSizeTrackingTree<S> instance;
+        private List<OrderedSizeTrackingTree<S>.Node<S>> itemsInOrder;
+        private final Consumer<OrderedSizeTrackingTree<S>.Node<S>> walkStrategy;
+        int index;
+
+        public OrderedSizeTrackingTreeIterator(OrderedSizeTrackingTree<S> instance, IterationOrder iterationOrder) {
+            this.instance = instance;
+            itemsInOrder = new ArrayList<>(instance.getRoot().map(sNode -> sNode.getSize()).orElse(0));
+            index = 0;
+            switch (iterationOrder) {
+                case INORDER:
+                    walkStrategy = new InOrderWalkStrategy();
+                    break;
+                case BFS:
+                    walkStrategy = new BFSWalkStrategy();
+                    break;
+                case DFS:
+                    walkStrategy = new DFSWalkStrategy();
+                    break;
+                default:
+                    throw new RuntimeException("Unsupported iteration order");
+            }
+
+            instance.getRoot().ifPresent(root -> pushSubtree(root));
+        }
+
+        private void pushSubtree(OrderedSizeTrackingTree<S>.Node<S> subtree) {
+            walkStrategy.accept(subtree);
+        }
+
+        @Override
+        public boolean hasNext() {
+            return index < itemsInOrder.size();
+        }
+
+        @Override
+        public S next() {
+            if (!hasNext()) {
+                throw new NoSuchElementException();
+            }
+
+            return itemsInOrder.get(index++).getValue();
+        }
+
+        class InOrderWalkStrategy implements Consumer<OrderedSizeTrackingTree<S>.Node<S>> {
+            @Override
+            public void accept(OrderedSizeTrackingTree<S>.Node<S> root) {
+                root.getLeftSubTree().ifPresent(leftNode -> pushSubtree(leftNode));
+
+                itemsInOrder.add(root);
+
+                root.getRightSubTree().ifPresent(rightNode -> pushSubtree(rightNode));
+            }
+        }
+
+        class DFSWalkStrategy implements Consumer<OrderedSizeTrackingTree<S>.Node<S>> {
+            @Override
+            public void accept(OrderedSizeTrackingTree<S>.Node<S> root) {
+                itemsInOrder.add(root);
+
+                root.getLeftSubTree().ifPresent(leftNode -> pushSubtree(leftNode));
+
+                root.getRightSubTree().ifPresent(rightNode -> pushSubtree(rightNode));
+            }
+        }
+
+        class BFSWalkStrategy implements Consumer<OrderedSizeTrackingTree<S>.Node<S>> {
+            @Override
+            public void accept(OrderedSizeTrackingTree<S>.Node<S> root) {
+                Queue<OrderedSizeTrackingTree<S>.Node<S>> itemsToWalk = new LinkedList<>();
+                itemsToWalk.add(root);
+                while (itemsToWalk.size()>0) {
+                    OrderedSizeTrackingTree<S>.Node<S> item = itemsToWalk.remove();
+                    itemsInOrder.add(item);
+                    item.getLeftSubTree().ifPresent(leftNode -> itemsToWalk.add(leftNode));
+                    item.getRightSubTree().ifPresent(rightNode -> itemsToWalk.add(rightNode));
+                }
+            }
         }
     }
 }
